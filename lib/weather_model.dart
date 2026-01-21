@@ -4,10 +4,10 @@ class WeatherModel {
   final double temp;
   final double feelsLike;
   final double humidity;
-  final double windSpeed; // stored in m/s
-  final double pressure; // stored in hPa
-  final double visibility; // stored in meters
-  final double chanceOfRain; // stored as percentage 0-100
+  final double windSpeed;
+  final double pressure;
+  final double visibility;
+  final double chanceOfRain;
 
   WeatherModel({
     required this.condition,
@@ -30,7 +30,6 @@ class WeatherModel {
     return WeatherModel(
       condition: weather['main'],
       iconCode: weather['icon'],
-      // Safely parse numbers (API sometimes sends int, sometimes double)
       temp: (main['temp'] as num).toDouble(),
       feelsLike: (main['feels_like'] as num).toDouble(),
       humidity: (main['humidity'] as num).toDouble(),
@@ -40,8 +39,6 @@ class WeatherModel {
       chanceOfRain: ((list['pop'] as num?)?.toDouble() ?? 0.0) * 100,
     );
   }
-
-  // --- GETTERS FOR UI DISPLAY ---
 
   String getTempString(bool isCelsius) {
     double value = isCelsius ? temp : (temp * 9 / 5) + 32;
@@ -54,7 +51,6 @@ class WeatherModel {
   }
 
   String getWindString(bool isKmh) {
-    // API returns m/s (metric default)
     if (isKmh) {
       return "${(windSpeed * 3.6).toStringAsFixed(1)} km/h";
     }

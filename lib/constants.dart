@@ -1,4 +1,4 @@
-const String apiKey = "a534f8c0801860cf861194bc0c063507";
+const String apiKey = "8f1aaba175cfd37defc8cb04aa3867c1";
 
 const List<String> popularCities = [
   // Pampanga

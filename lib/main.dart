@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:ui'; // Required for Blur
+import 'dart:ui';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart'; // Needed for Colors
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
-
 import 'constants.dart';
 import 'weather_model.dart';
 import 'weather_service.dart';
@@ -31,14 +30,14 @@ class _MyAppState extends State<MyApp> {
   // --- PREFERENCES ---
   bool isDarkMode = false;
   bool isCelsius = true;
-  Color activeColor = CupertinoColors.activeBlue;
+  Color activeColor = CupertinoColors.systemTeal;
   int autoRefreshInterval = 0;
   bool isKmh = false;
   bool isMmHg = false;
 
   // --- DATA ---
   List<String> recentSearches = [];
-  String city = "Arayat";
+  String city = "Angeles City";
 
   WeatherModel? _weather;
   String weatherCondition = "Loading...";
@@ -60,13 +59,12 @@ class _MyAppState extends State<MyApp> {
   }
 
   // --- LOGIC ---
-
   Future<void> _loadPreferences() async {
     final minSplashTime = Future.delayed(const Duration(seconds: 2));
     final prefs = await SharedPreferences.getInstance();
 
     setState(() {
-      city = prefs.getString('city') ?? "Doha";
+      city = prefs.getString('city') ?? "Angeles City";
       isDarkMode = prefs.getBool('isDarkMode') ?? false;
       isCelsius = prefs.getBool('isCelsius') ?? true;
       autoRefreshInterval = prefs.getInt('autoRefreshInterval') ?? 0;
@@ -81,10 +79,7 @@ class _MyAppState extends State<MyApp> {
     });
 
     _updateAutoRefresh(autoRefreshInterval, save: false);
-
-    // Initial load (walang dialog dito kasi app startup lang)
     await getWeatherData(targetCity: city, saveToHistory: false);
-
     await minSplashTime;
 
     if (mounted) {
@@ -132,7 +127,6 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  // --- UPDATED: UNIFIED DIALOG HANDLER ---
   void _showResultDialog(String title, String message, {bool isError = false}) {
     if (navigatorKey.currentContext == null) return;
 
@@ -141,9 +135,8 @@ class _MyAppState extends State<MyApp> {
       builder: (context) => CupertinoAlertDialog(
         title: Text(title,
             style: TextStyle(
-                // UPDATED: Font family inherits automatically, specific style here
                 fontFamily: 'SFPro',
-                color: isError ? CupertinoColors.destructiveRed : CupertinoColors.activeBlue
+                color: isError ? CupertinoColors.destructiveRed : activeColor
             )
         ),
         content: Padding(
@@ -161,7 +154,6 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
-  // --- CORE WEATHER LOGIC ---
   Future<void> getWeatherData({required String targetCity, bool saveToHistory = false}) async {
     if (targetCity.trim().isEmpty) return;
 
@@ -190,8 +182,6 @@ class _MyAppState extends State<MyApp> {
       if (saveToHistory) {
         await _addToRecentSearches(targetCity);
         await _savePreferences();
-        await Future.delayed(const Duration(milliseconds: 500));
-        _showResultDialog("Location Updated", "Successfully set location to $targetCity.", isError: false);
       }
 
     } catch (e) {
@@ -219,7 +209,6 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  // --- HELPERS ---
   String _getBackgroundImage(String? iconCode) {
     if (iconCode == null) return "assets/images/cloudy.jpg";
     switch (iconCode.substring(0, 2)) {
@@ -236,24 +225,32 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  IconData _getWeatherIcon(String? iconCode) {
-    if (iconCode == null) return CupertinoIcons.cloud;
+  String _getWeatherImagePath(String? iconCode) {
+    if (iconCode == null) return "assets/icons/sun.png";
+
     String code = iconCode.substring(0, 2);
     bool isDay = iconCode.endsWith('d');
+
     switch (code) {
-      case '01': return isDay ? CupertinoIcons.sun_max_fill : CupertinoIcons.moon_fill;
-      case '02': return isDay ? CupertinoIcons.cloud_sun_fill : CupertinoIcons.cloud_moon_fill;
-      case '03': case '04': return CupertinoIcons.cloud_fill;
-      case '09': return CupertinoIcons.cloud_drizzle_fill;
-      case '10': return CupertinoIcons.cloud_rain_fill;
-      case '11': return CupertinoIcons.cloud_bolt_fill;
-      case '13': return CupertinoIcons.snow;
-      case '50': return CupertinoIcons.cloud_fog_fill;
-      default: return CupertinoIcons.cloud_fill;
+      case '01': // Clear Sky
+        return isDay ? "assets/icons/sun.png" : "assets/icons/moon.png";
+      case '02': // Few Clouds
+      case '03': // Scattered Clouds
+      case '04': // Broken Clouds
+        return "assets/icons/wind.png"; // Using wind/cloud substitute
+      case '09': // Shower Rain
+      case '10': // Rain
+        return isDay ? "assets/icons/sunRaint.png" : "assets/icons/nightRain.png";
+      case '11': // Thunderstorm
+        return isDay ? "assets/icons/thunder.png" : "assets/icons/nightThunder.png";
+      case '13': // Snow
+        return "assets/icons/heavyRain.png"; // Fallback
+      case '50': // Mist
+        return "assets/icons/wind.png";
+      default:
+        return isDay ? "assets/icons/sun.png" : "assets/icons/moon.png";
     }
   }
-
-  // --- UI COMPONENTS ---
 
   void _showColorPicker(BuildContext context) {
     showCupertinoModalPopup(
@@ -306,16 +303,23 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
-  Widget _buildInfoCard(String title, String value, IconData icon) {
-    return Expanded(
+  Widget _buildGridInfoCard(String title, String value, IconData icon) {
+    return Container(
+      height: 110,
+      padding: const EdgeInsets.all(8.0),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+      ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: Colors.white, size: 24),
+          Icon(icon, color: Colors.white.withOpacity(0.9), size: 22),
           const SizedBox(height: 8),
-          Text(title, style: const TextStyle(fontSize: 12, color: Colors.white70, fontFamily: 'SFPro')),
+          Text(title, textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.7), fontFamily: 'SFPro')),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white, fontFamily: 'SFPro')),
+          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white, fontFamily: 'SFPro')),
         ],
       ),
     );
@@ -327,13 +331,12 @@ class _MyAppState extends State<MyApp> {
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       title: "Climora",
-      // --- UPDATED THEME: Applying SFPro globally ---
       theme: CupertinoThemeData(
           brightness: isDarkMode ? Brightness.dark : Brightness.light,
           primaryColor: activeColor,
           textTheme: CupertinoTextThemeData(
             textStyle: TextStyle(
-              fontFamily: 'SFPro', // Here is the magic
+              fontFamily: 'SFPro',
               color: isDarkMode ? CupertinoColors.white : CupertinoColors.black,
             ),
           )
@@ -362,19 +365,19 @@ class _MyAppState extends State<MyApp> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(CupertinoIcons.cloud_sun_fill, size: 100, color: CupertinoColors.white),
+              // Splash Icon
+              const Icon(CupertinoIcons.cloud_sun_fill, size: 80, color: CupertinoColors.white),
               const SizedBox(height: 20),
-              // --- UPDATED FONT HERE ---
               const Text("Climora", style: TextStyle(
-                  fontSize: 40,
+                  fontSize: 32,
                   fontWeight: FontWeight.bold,
                   color: CupertinoColors.white,
-                  letterSpacing: 1.5,
-                  fontFamily: 'SFPro', // Changed from 'System' to 'SFPro'
+                  letterSpacing: 2.0,
+                  fontFamily: 'SFPro',
                   decoration: TextDecoration.none
               )),
               const SizedBox(height: 60),
-              const CupertinoActivityIndicator(radius: 15, color: CupertinoColors.white),
+              const CupertinoActivityIndicator(radius: 12, color: CupertinoColors.white),
             ],
           ),
         ),
@@ -387,188 +390,299 @@ class _MyAppState extends State<MyApp> {
       key: const ValueKey("MainApp"),
       tabBar: CupertinoTabBar(
         activeColor: activeColor,
-        backgroundColor: isDarkMode ? const Color(0xFF1C1C1E) : const Color(0xFFF9F9F9),
+        border: Border(top: BorderSide(color: isDarkMode ? Colors.white12 : Colors.black12, width: 0.5)),
+        backgroundColor: isDarkMode ? const Color(0xFF1C1C1E).withOpacity(0.9) : const Color(0xFFF9F9F9).withOpacity(0.9),
         items: const [
-          BottomNavigationBarItem(icon: Icon(CupertinoIcons.house), activeIcon: Icon(CupertinoIcons.house_fill), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(CupertinoIcons.gear), activeIcon: Icon(CupertinoIcons.gear_solid), label: 'Settings'),
+          BottomNavigationBarItem(icon: Icon(CupertinoIcons.house_alt), activeIcon: Icon(CupertinoIcons.house_alt_fill), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(CupertinoIcons.settings), activeIcon: Icon(CupertinoIcons.settings_solid), label: 'Settings'),
         ],
       ),
       tabBuilder: (context, index) {
         if (index == 0) {
-          // --- HOME TAB ---
-          return CupertinoPageScaffold(
-            backgroundColor: Colors.transparent,
-            child: Stack(
-              children: [
-                Container(
-                  width: double.infinity,
-                  height: double.infinity,
-                  decoration: BoxDecoration(
-                    image: DecorationImage(
-                      image: AssetImage(_getBackgroundImage(_weather?.iconCode)),
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-                Container(
-                  width: double.infinity,
-                  height: double.infinity,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Colors.black.withOpacity(0.3), Colors.black.withOpacity(0.6)],
-                    ),
-                  ),
-                ),
-                SafeArea(
-                  child: CustomScrollView(
-                    slivers: [
-                      CupertinoSliverRefreshControl(
-                        onRefresh: () async { await getWeatherData(targetCity: city); },
-                        builder: (context, refreshState, pulledExtent, refreshTriggerPullDistance, refreshIndicatorExtent) {
-                          return const Center(child: CupertinoActivityIndicator(color: Colors.white));
-                        },
-                      ),
-                      SliverFillRemaining(
-                        hasScrollBody: false,
-                        child: Column(
-                          children: [
-                            const SizedBox(height: 20),
-                            Text(
-                                city,
-                                style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 32,
-                                    color: activeColor,
-                                    fontFamily: 'SFPro',
-                                    shadows: const [Shadow(blurRadius: 10, color: Colors.black45, offset: Offset(2, 2))]
-                                )
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                                weatherCondition,
-                                style: const TextStyle(fontWeight: FontWeight.w300, fontSize: 20, color: Colors.white70, fontFamily: 'SFPro')
-                            ),
-                            const SizedBox(height: 8),
-                            Text(isFetching ? "Fetching..." : "Updated $lastFetchTime", style: const TextStyle(fontSize: 12, color: Colors.white54, fontFamily: 'SFPro')),
+          return _buildWeatherHome();
+        } else {
+          return _buildSettingsPage(context);
+        }
+      },
+    );
+  }
 
-                            const SizedBox(height: 30),
-                            SizedBox(
-                              width: 150, height: 150,
-                              child: _weather == null
-                                  ? Icon(CupertinoIcons.cloud, size: 100, color: activeColor)
-                                  : Icon(
-                                  _getWeatherIcon(_weather!.iconCode),
-                                  size: 110,
-                                  color: activeColor
+  Widget _buildWeatherHome() {
+    return CupertinoPageScaffold(
+      backgroundColor: Colors.black, // Fallback color
+      child: Stack(
+        children: [
+          // Background Image
+          Positioned.fill(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 600),
+              child: Image.asset(
+                _getBackgroundImage(_weather?.iconCode),
+                key: ValueKey(_weather?.iconCode),
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+              ),
+            ),
+          ),
+          // Gradient Overlay
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.3),
+                    Colors.transparent,
+                    Colors.black.withOpacity(0.6),
+                    Colors.black.withOpacity(0.8),
+                  ],
+                  stops: const [0.0, 0.4, 0.7, 1.0],
+                ),
+              ),
+            ),
+          ),
+
+          SafeArea(
+            child: CustomScrollView(
+              physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+              slivers: [
+                CupertinoSliverRefreshControl(
+                  onRefresh: () async { await getWeatherData(targetCity: city); },
+                  builder: (context, refreshState, pulledExtent, refreshTriggerPullDistance, refreshIndicatorExtent) {
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 16.0),
+                      child: Center(child: CupertinoActivityIndicator(color: Colors.white.withOpacity(0.7))),
+                    );
+                  },
+                ),
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // --- HEADER ---
+                        const SizedBox(height: 10),
+                        Text(
+                          "Climora",
+                          style: TextStyle(
+                            fontFamily: 'SFPro',
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.5,
+                            color: Colors.white.withOpacity(0.9),
+                            shadows: [Shadow(color: Colors.black.withOpacity(0.3), blurRadius: 4, offset: const Offset(0, 2))],
+                          ),
+                        ),
+
+                        // --- CITY NAME ---
+                        const SizedBox(height: 20),
+                        GestureDetector(
+                          onTap: () {
+                             // Shortcut to search if needed
+                          },
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(CupertinoIcons.location_solid, color: activeColor, size: 18),
+                              const SizedBox(width: 8),
+                              Text(
+                                  city,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 28,
+                                      color: Colors.white,
+                                      fontFamily: 'SFPro',
+                                      shadows: [Shadow(blurRadius: 10, color: Colors.black45, offset: Offset(2, 2))]
+                                  )
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                            isFetching ? "Updating..." : "Updated $lastFetchTime",
+                            style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.6), fontFamily: 'SFPro')
+                        ),
+
+                        // --- MAIN TEMP & ICON (NOW USING PNG) ---
+                        const Spacer(),
+                        _weather == null
+                            ? Icon(CupertinoIcons.cloud, size: 100, color: Colors.white.withOpacity(0.5))
+                            : Column(
+                          children: [
+                            // MODERN IMAGE
+                            Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.white.withOpacity(0.15),
+                                    blurRadius: 30,
+                                    spreadRadius: -10,
+                                  )
+                                ],
+                              ),
+                              child: Image.asset(
+                                _getWeatherImagePath(_weather!.iconCode),
+                                width: 180,
+                                height: 180,
+                                fit: BoxFit.contain,
                               ),
                             ),
-
+                            const SizedBox(height: 10),
                             Text(
-                                _weather == null ? "--" : "${_weather!.getTempString(isCelsius)}°",
+                                weatherCondition,
                                 style: TextStyle(
-                                    fontSize: 90,
-                                    fontWeight: FontWeight.w200,
-                                    color: activeColor,
-                                    letterSpacing: -5,
-                                    fontFamily: 'SFPro'
+                                    fontWeight: FontWeight.w400,
+                                    fontSize: 22,
+                                    color: Colors.white.withOpacity(0.9),
+                                    fontFamily: 'SFPro',
+                                    letterSpacing: 0.5
                                 )
                             ),
+                            Text(
+                                "${_weather!.getTempString(isCelsius)}°",
+                                style: const TextStyle(
+                                  fontSize: 100,
+                                  fontWeight: FontWeight.w200,
+                                  color: Colors.white,
+                                  letterSpacing: -4,
+                                  fontFamily: 'SFPro',
+                                  height: 1.0,
+                                )
+                            ),
+                          ],
+                        ),
+                        const Spacer(),
 
-                            const Spacer(),
-                            Container(
-                              margin: const EdgeInsets.all(20),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(25),
-                                child: BackdropFilter(
-                                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(vertical: 25, horizontal: 10),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withOpacity(0.3),
-                                      borderRadius: BorderRadius.circular(25),
-                                      border: Border.all(color: Colors.white.withOpacity(0.2)),
-                                    ),
-                                    child: Column(
+                        // --- GLASS DETAILS GRID ---
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 30),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(30),
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                              child: Container(
+                                padding: const EdgeInsets.all(20),
+                                decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.25),
+                                    borderRadius: BorderRadius.circular(30),
+                                    border: Border.all(color: Colors.white.withOpacity(0.15)),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.1),
+                                        blurRadius: 20,
+                                        spreadRadius: 5,
+                                      )
+                                    ]
+                                ),
+                                child: Column(
+                                  children: [
+                                    // Row 1
+                                    Row(
                                       children: [
-                                        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                                          _buildInfoCard("Feels Like", _weather == null ? "--" : "${_weather!.getFeelsLikeString(isCelsius)}°", CupertinoIcons.thermometer),
-                                          _buildInfoCard("Humidity", _weather == null ? "--" : "${_weather!.humidity.toStringAsFixed(0)}%", CupertinoIcons.drop),
-                                          _buildInfoCard("Rain Chance", _weather == null ? "--" : "${_weather!.chanceOfRain.toStringAsFixed(0)}%", CupertinoIcons.cloud_rain)
-                                        ]),
-                                        const SizedBox(height: 25),
-                                        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                                          _buildInfoCard("Wind", _weather == null ? "--" : _weather!.getWindString(isKmh), CupertinoIcons.wind),
-                                          _buildInfoCard("Pressure", _weather == null ? "--" : _weather!.getPressureString(isMmHg), CupertinoIcons.gauge),
-                                          _buildInfoCard("Visibility", _weather == null ? "--" : _weather!.getVisibilityString(isCelsius), CupertinoIcons.eye)
-                                        ]),
+                                        Expanded(child: _buildGridInfoCard("Feels Like", _weather == null ? "--" : "${_weather!.getFeelsLikeString(isCelsius)}°", CupertinoIcons.thermometer)),
+                                        const SizedBox(width: 12),
+                                        Expanded(child: _buildGridInfoCard("Humidity", _weather == null ? "--" : "${_weather!.humidity.toStringAsFixed(0)}%", CupertinoIcons.drop)),
+                                        const SizedBox(width: 12),
+                                        Expanded(child: _buildGridInfoCard("Rain", _weather == null ? "--" : "${_weather!.chanceOfRain.toStringAsFixed(0)}%", CupertinoIcons.cloud_rain)),
                                       ],
                                     ),
-                                  ),
+                                    const SizedBox(height: 12),
+                                    // Row 2
+                                    Row(
+                                      children: [
+                                        Expanded(child: _buildGridInfoCard("Wind", _weather == null ? "--" : _weather!.getWindString(isKmh), CupertinoIcons.wind)),
+                                        const SizedBox(width: 12),
+                                        Expanded(child: _buildGridInfoCard("Pressure", _weather == null ? "--" : _weather!.getPressureString(isMmHg), CupertinoIcons.gauge)),
+                                        const SizedBox(width: 12),
+                                        Expanded(child: _buildGridInfoCard("Visibility", _weather == null ? "--" : _weather!.getVisibilityString(isCelsius), CupertinoIcons.eye)),
+                                      ],
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 20),
-                          ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
-          );
-        } else {
-          // --- SETTINGS TAB ---
-          return CupertinoPageScaffold(
-            navigationBar: const CupertinoNavigationBar(middle: Text("Settings")),
-            backgroundColor: CupertinoColors.systemGroupedBackground,
-            child: SafeArea(
-              child: ListView(
-                children: [
-                  CupertinoListSection.insetGrouped(
-                    header: const Text('Appearance'),
-                    children: [
-                      CupertinoListTile(leading: const Icon(CupertinoIcons.moon_fill, color: CupertinoColors.systemGrey), title: const Text('Dark Mode'), trailing: CupertinoSwitch(value: isDarkMode, activeColor: activeColor, onChanged: (value) { setState(() => isDarkMode = value); _savePreferences(); })),
-                      CupertinoListTile(leading: Icon(CupertinoIcons.paintbrush_fill, color: activeColor), title: const Text('Theme Color'), trailing: Icon(CupertinoIcons.circle_fill, color: activeColor), onTap: () => _showColorPicker(context)),
-                    ],
-                  ),
-                  CupertinoListSection.insetGrouped(
-                    header: const Text('Preferences'),
-                    children: [
-                      CupertinoListTile(leading: Icon(CupertinoIcons.thermometer, color: activeColor), title: const Text('Temperature Unit'), trailing: CupertinoSlidingSegmentedControl<bool>(thumbColor: activeColor, groupValue: isCelsius, children: {true: Text('°C', style: TextStyle(color: isCelsius ? CupertinoColors.white : CupertinoColors.black)), false: Text('°F', style: TextStyle(color: !isCelsius ? CupertinoColors.white : CupertinoColors.black))}, onValueChanged: (value) { if (value != null) { setState(() { isCelsius = value; }); _savePreferences(); } })),
-                      CupertinoListTile(leading: Icon(CupertinoIcons.wind, color: activeColor), title: const Text('Wind Unit'), trailing: CupertinoSlidingSegmentedControl<bool>(thumbColor: activeColor, groupValue: isKmh, children: {false: Text('m/s', style: TextStyle(fontSize: 14, color: !isKmh ? CupertinoColors.white : CupertinoColors.black)), true: Text('km/h', style: TextStyle(fontSize: 14, color: isKmh ? CupertinoColors.white : CupertinoColors.black))}, onValueChanged: (value) { if (value != null) { setState(() { isKmh = value; }); _savePreferences(); } })),
-                      CupertinoListTile(leading: Icon(CupertinoIcons.gauge, color: activeColor), title: const Text('Pressure Unit'), trailing: CupertinoSlidingSegmentedControl<bool>(thumbColor: activeColor, groupValue: isMmHg, children: {false: Text('hPa', style: TextStyle(fontSize: 14, color: !isMmHg ? CupertinoColors.white : CupertinoColors.black)), true: Text('mmHg', style: TextStyle(fontSize: 14, color: isMmHg ? CupertinoColors.white : CupertinoColors.black))}, onValueChanged: (value) { if (value != null) { setState(() { isMmHg = value; }); _savePreferences(); } })),
-                      CupertinoListTile(leading: Icon(CupertinoIcons.time, color: activeColor), title: const Text('Auto Refresh'), trailing: Row(mainAxisSize: MainAxisSize.min, children: [Text(autoRefreshInterval == 0 ? "Off" : "${autoRefreshInterval}m", style: const TextStyle(color: CupertinoColors.systemGrey)), const SizedBox(width: 5), const Icon(CupertinoIcons.chevron_right, color: CupertinoColors.systemGrey3)]), onTap: () => _showAutoRefreshPicker(context)),
-                    ],
-                  ),
-                  CupertinoListSection.insetGrouped(
-                    header: const Text('Location'),
-                    children: [
-                      CupertinoListTile(
-                        leading: Icon(CupertinoIcons.location_solid, color: activeColor),
-                        title: const Text('City'),
-                        trailing: Row(mainAxisSize: MainAxisSize.min, children: [Text(city, style: const TextStyle(color: CupertinoColors.systemGrey)), const SizedBox(width: 5), const Icon(CupertinoIcons.chevron_right, color: CupertinoColors.systemGrey3)]),
-                        onTap: () {
-                          Navigator.of(context).push(CupertinoPageRoute(builder: (context) => CitySearchPage(
-                              recentSearches: recentSearches,
-                              popularCities: popularCities,
-                              onCitySelected: (selectedCity) async {
-                                // Pass true to trigger the success dialog
-                                await getWeatherData(targetCity: selectedCity, saveToHistory: true);
-                              }
-                          )));
-                        },
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsPage(BuildContext context) {
+    return CupertinoPageScaffold(
+      navigationBar: const CupertinoNavigationBar(
+        middle: Text("Settings", style: TextStyle(fontWeight: FontWeight.w600)),
+        backgroundColor: Colors.transparent,
+        border: null,
+      ),
+      backgroundColor: CupertinoColors.systemGroupedBackground,
+      child: SafeArea(
+        child: ListView(
+          children: [
+            const SizedBox(height: 10),
+            CupertinoListSection.insetGrouped(
+              header: const Text('APPEARANCE'),
+              children: [
+                CupertinoListTile(leading: Container(padding:const EdgeInsets.all(4), decoration: BoxDecoration(color: CupertinoColors.systemGrey, borderRadius: BorderRadius.circular(6)), child: const Icon(CupertinoIcons.moon_fill, color: Colors.white, size: 18)), title: const Text('Dark Mode'), trailing: CupertinoSwitch(value: isDarkMode, activeColor: activeColor, onChanged: (value) { setState(() => isDarkMode = value); _savePreferences(); })),
+                CupertinoListTile(
+                    leading: Container(padding:const EdgeInsets.all(4), decoration: BoxDecoration(color: activeColor, borderRadius: BorderRadius.circular(6)), child: const Icon(CupertinoIcons.paintbrush_fill, color: Colors.white, size: 18)),
+                    title: const Text('Theme Color'),
+                    trailing: const Icon(CupertinoIcons.chevron_right, color: CupertinoColors.systemGrey3, size: 16),
+                    onTap: () => _showColorPicker(context)
+                ),
+              ],
             ),
-          );
-        }
-      },
+            CupertinoListSection.insetGrouped(
+              header: const Text('UNITS & PREFERENCES'),
+              children: [
+                CupertinoListTile(leading: const Icon(CupertinoIcons.thermometer, color: CupertinoColors.systemGrey), title: const Text('Temperature'), trailing: CupertinoSlidingSegmentedControl<bool>(thumbColor: activeColor, groupValue: isCelsius, children: {true: Text('°C', style: TextStyle(color: isCelsius ? CupertinoColors.white : CupertinoColors.black)), false: Text('°F', style: TextStyle(color: !isCelsius ? CupertinoColors.white : CupertinoColors.black))}, onValueChanged: (value) { if (value != null) { setState(() { isCelsius = value; }); _savePreferences(); } })),
+                CupertinoListTile(leading: const Icon(CupertinoIcons.wind, color: CupertinoColors.systemGrey), title: const Text('Wind Speed'), trailing: CupertinoSlidingSegmentedControl<bool>(thumbColor: activeColor, groupValue: isKmh, children: {false: Text('m/s', style: TextStyle(fontSize: 13, color: !isKmh ? CupertinoColors.white : CupertinoColors.black)), true: Text('km/h', style: TextStyle(fontSize: 13, color: isKmh ? CupertinoColors.white : CupertinoColors.black))}, onValueChanged: (value) { if (value != null) { setState(() { isKmh = value; }); _savePreferences(); } })),
+                CupertinoListTile(leading: const Icon(CupertinoIcons.gauge, color: CupertinoColors.systemGrey), title: const Text('Pressure'), trailing: CupertinoSlidingSegmentedControl<bool>(thumbColor: activeColor, groupValue: isMmHg, children: {false: Text('hPa', style: TextStyle(fontSize: 13, color: !isMmHg ? CupertinoColors.white : CupertinoColors.black)), true: Text('mmHg', style: TextStyle(fontSize: 13, color: isMmHg ? CupertinoColors.white : CupertinoColors.black))}, onValueChanged: (value) { if (value != null) { setState(() { isMmHg = value; }); _savePreferences(); } })),
+                CupertinoListTile(
+                    leading: const Icon(CupertinoIcons.time, color: CupertinoColors.systemGrey),
+                    title: const Text('Auto Refresh'),
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [Text(autoRefreshInterval == 0 ? "Off" : "${autoRefreshInterval} min", style: const TextStyle(color: CupertinoColors.systemGrey)), const SizedBox(width: 6), const Icon(CupertinoIcons.chevron_right, color: CupertinoColors.systemGrey3, size: 16)]),
+                    onTap: () => _showAutoRefreshPicker(context)
+                ),
+              ],
+            ),
+            CupertinoListSection.insetGrouped(
+              header: const Text('LOCATION'),
+              children: [
+                CupertinoListTile(
+                  leading: const Icon(CupertinoIcons.location_solid, color: CupertinoColors.systemGrey),
+                  title: const Text('Current City'),
+                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [Text(city, style: TextStyle(color: activeColor, fontWeight: FontWeight.w500)), const SizedBox(width: 6), const Icon(CupertinoIcons.chevron_right, color: CupertinoColors.systemGrey3, size: 16)]),
+                  onTap: () {
+                    Navigator.of(context).push(CupertinoPageRoute(builder: (context) => CitySearchPage(
+                        recentSearches: recentSearches,
+                        popularCities: popularCities,
+                        onCitySelected: (selectedCity) async {
+                          await getWeatherData(targetCity: selectedCity, saveToHistory: true);
+                        }
+                    )));
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Center(child: Text("Climora v1.0.0", style: TextStyle(color: CupertinoColors.systemGrey.withOpacity(0.5), fontSize: 12))),
+            const SizedBox(height: 50),
+          ],
+        ),
+      ),
     );
   }
 }

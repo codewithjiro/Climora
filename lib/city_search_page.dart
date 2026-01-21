@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 
 class CitySearchPage extends StatefulWidget {
   final List<String> recentSearches;
@@ -38,84 +39,114 @@ class _CitySearchPageState extends State<CitySearchPage> {
 
   void _submitCity(String city) {
     if (city.trim().isNotEmpty) {
-      // 1. Close the search page first
       Navigator.pop(context);
-
-      // 2. Trigger the fetch logic in main.dart
-      // Note: main.dart now handles the waiting/dialog logic
       widget.onCitySelected(city.trim());
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final bool isDarkMode = CupertinoTheme.of(context).brightness == Brightness.dark;
+    final Color containerColor = isDarkMode ? const Color(0xFF1C1C1E) : CupertinoColors.white;
+    final Color textColor = isDarkMode ? CupertinoColors.white : CupertinoColors.black;
+    final Color searchBarColor = isDarkMode ? const Color(0xFF2C2C2E) : CupertinoColors.systemGrey5;
+
     return CupertinoPageScaffold(
+      backgroundColor: CupertinoColors.systemGroupedBackground,
       navigationBar: const CupertinoNavigationBar(
-        middle: Text("Select City"),
+        middle: Text("Select Location", style: TextStyle(fontFamily: 'SFPro')),
+        backgroundColor: CupertinoColors.systemGroupedBackground,
+        border: null,
       ),
       child: SafeArea(
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.all(10.0),
-              child: CupertinoSearchTextField(
-                controller: _textController,
-                placeholder: "Search or enter city...",
-                onSubmitted: _submitCity,
+              padding: const EdgeInsets.all(16.0),
+              child: Hero(
+                tag: 'searchBar',
+                child: CupertinoSearchTextField(
+                  controller: _textController,
+                  placeholder: "Search city (e.g. Manila)",
+                  backgroundColor: searchBarColor,
+                  style: TextStyle(color: textColor, fontFamily: 'SFPro'),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                  borderRadius: BorderRadius.circular(12),
+                  onSubmitted: _submitCity,
+                ),
               ),
             ),
             Expanded(
               child: ListView(
+                physics: const BouncingScrollPhysics(),
                 children: [
-                  // Option to add the custom typed city
                   if (_searchText.isNotEmpty)
-                    GestureDetector(
-                      onTap: () => _submitCity(_searchText),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                        decoration: const BoxDecoration(
-                          border: Border(bottom: BorderSide(color: CupertinoColors.systemGrey5)),
+                        decoration: BoxDecoration(
+                          color: containerColor,
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Row(
-                          children: [
-                            const Icon(CupertinoIcons.add_circled_solid, color: CupertinoColors.activeGreen, size: 24),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                "Add \"$_searchText\"",
-                                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: CupertinoColors.activeBlue),
-                              ),
-                            ),
-                          ],
+                        child: CupertinoListTile(
+                          onTap: () => _submitCity(_searchText),
+                          leading: const Icon(CupertinoIcons.add_circled_solid, color: CupertinoColors.activeGreen),
+                          title: Text("Search \"$_searchText\"", style: TextStyle(fontWeight: FontWeight.w500, color: textColor, fontFamily: 'SFPro')),
+                          trailing: const Icon(CupertinoIcons.arrow_right, color: CupertinoColors.systemGrey3, size: 16),
                         ),
                       ),
                     ),
 
-                  // Recent Searches Section
                   if (widget.recentSearches.isNotEmpty && _searchText.isEmpty) ...[
                     const Padding(
-                      padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                      child: Text("Recent Searches",
-                          style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 14, fontWeight: FontWeight.bold)
+                      padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
+                      child: Text("RECENTLY SEARCHED",
+                          style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5, fontFamily: 'SFPro')
                       ),
                     ),
-                    for (String city in widget.recentSearches)
-                      _buildCityTile(city, isRecent: true),
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: containerColor,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        children: [
+                          for (int i = 0; i < widget.recentSearches.length; i++) ...[
+                            _buildCityTile(widget.recentSearches[i], textColor, isRecent: true, isLast: i == widget.recentSearches.length - 1),
+                          ]
+                        ],
+                      ),
+                    ),
                   ],
 
-                  // Popular Cities / Search Results Section
-                  if (_searchText.isEmpty || widget.popularCities.any((c) => c.toLowerCase().contains(_searchText.toLowerCase())))
+                  if (_searchText.isEmpty || widget.popularCities.any((c) => c.toLowerCase().contains(_searchText.toLowerCase()))) ...[
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
                       child: Text(
-                          _searchText.isEmpty ? "Popular Cities" : "Results",
-                          style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 14, fontWeight: FontWeight.bold)
+                          _searchText.isEmpty ? "POPULAR CITIES" : "RESULTS",
+                          style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5, fontFamily: 'SFPro')
                       ),
                     ),
-
-                  for (String city in widget.popularCities)
-                    if (_searchText.isEmpty || city.toLowerCase().contains(_searchText.toLowerCase()))
-                      _buildCityTile(city),
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: containerColor,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        children: [
+                          ...widget.popularCities
+                              .where((city) => _searchText.isEmpty || city.toLowerCase().contains(_searchText.toLowerCase()))
+                              .toList()
+                              .asMap()
+                              .entries
+                              .map((entry) => _buildCityTile(entry.value, textColor, isLast: entry.key == widget.popularCities.length - 1))
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 40),
                 ],
               ),
             ),
@@ -125,29 +156,22 @@ class _CitySearchPageState extends State<CitySearchPage> {
     );
   }
 
-  Widget _buildCityTile(String city, {bool isRecent = false}) {
-    return GestureDetector(
-      onTap: () => _submitCity(city),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: CupertinoColors.systemGrey5)),
-          color: CupertinoColors.transparent,
+  Widget _buildCityTile(String city, Color textColor, {bool isRecent = false, bool isLast = false}) {
+    return Column(
+      children: [
+        CupertinoListTile(
+          onTap: () => _submitCity(city),
+          leading: Icon(
+            isRecent ? CupertinoIcons.clock : CupertinoIcons.location_solid,
+            color: isRecent ? CupertinoColors.systemGrey : CupertinoColors.activeBlue,
+            size: 20,
+          ),
+          title: Text(city, style: TextStyle(fontSize: 16, color: textColor, fontFamily: 'SFPro')),
+          trailing: const Icon(CupertinoIcons.chevron_right, size: 14, color: CupertinoColors.systemGrey3),
         ),
-        child: Row(
-          children: [
-            Icon(
-              isRecent ? CupertinoIcons.time : CupertinoIcons.location_solid,
-              color: isRecent ? CupertinoColors.systemGrey : CupertinoColors.activeBlue,
-              size: 20,
-            ),
-            const SizedBox(width: 12),
-            Text(city, style: const TextStyle(fontSize: 16)),
-            const Spacer(),
-            const Icon(CupertinoIcons.chevron_right, size: 14, color: CupertinoColors.systemGrey3),
-          ],
-        ),
-      ),
+        if (!isLast)
+          const Divider(height: 1, indent: 50, endIndent: 0, color: CupertinoColors.systemGrey5),
+      ],
     );
   }
 }
