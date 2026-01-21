@@ -5,7 +5,6 @@ import 'package:flutter/material.dart'; // Needed for Colors
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 
-// Siguraduhin na ang mga files na ito ay nasa lib folder mo
 import 'constants.dart';
 import 'weather_model.dart';
 import 'weather_service.dart';
@@ -32,7 +31,7 @@ class _MyAppState extends State<MyApp> {
   // --- PREFERENCES ---
   bool isDarkMode = false;
   bool isCelsius = true;
-  Color activeColor = CupertinoColors.activeBlue; // Ito ang magdadala ng kulay sa Home at Settings
+  Color activeColor = CupertinoColors.activeBlue;
   int autoRefreshInterval = 0;
   bool isKmh = false;
   bool isMmHg = false;
@@ -48,13 +47,6 @@ class _MyAppState extends State<MyApp> {
   bool isLoading = false;
   Timer? _refreshTimer;
 
-  // --- TOAST VARIABLES ---
-  bool _showToast = false;
-  String _toastMessage = "";
-  Color _toastColor = CupertinoColors.activeBlue;
-  IconData _toastIcon = CupertinoIcons.location_fill;
-  Timer? _toastTimer;
-
   @override
   void initState() {
     super.initState();
@@ -64,7 +56,6 @@ class _MyAppState extends State<MyApp> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
-    _toastTimer?.cancel();
     super.dispose();
   }
 
@@ -90,8 +81,10 @@ class _MyAppState extends State<MyApp> {
     });
 
     _updateAutoRefresh(autoRefreshInterval, save: false);
-    // Initial load: Don't show toast, don't re-save to history
-    await getWeatherData(targetCity: city, showToast: false, saveToHistory: false);
+
+    // Initial load (walang dialog dito kasi app startup lang)
+    await getWeatherData(targetCity: city, saveToHistory: false);
+
     await minSplashTime;
 
     if (mounted) {
@@ -134,31 +127,55 @@ class _MyAppState extends State<MyApp> {
     if (save) _savePreferences();
     if (minutes > 0) {
       _refreshTimer = Timer.periodic(Duration(minutes: minutes), (timer) {
-        getWeatherData(targetCity: city, showToast: false);
+        getWeatherData(targetCity: city);
       });
     }
   }
 
+  // --- UPDATED: UNIFIED DIALOG HANDLER ---
+  void _showResultDialog(String title, String message, {bool isError = false}) {
+    if (navigatorKey.currentContext == null) return;
+
+    showCupertinoDialog(
+      context: navigatorKey.currentContext!,
+      builder: (context) => CupertinoAlertDialog(
+        title: Text(title,
+            style: TextStyle(
+                // UPDATED: Font family inherits automatically, specific style here
+                fontFamily: 'SFPro',
+                color: isError ? CupertinoColors.destructiveRed : CupertinoColors.activeBlue
+            )
+        ),
+        content: Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: Text(message, style: const TextStyle(fontFamily: 'SFPro')),
+        ),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            child: const Text("OK", style: TextStyle(fontFamily: 'SFPro')),
+            onPressed: () => Navigator.pop(context),
+          )
+        ],
+      ),
+    );
+  }
+
   // --- CORE WEATHER LOGIC ---
-  // targetCity: The city we want to fetch.
-  // saveToHistory: Only set to TRUE if this comes from a User Search action.
-  Future<void> getWeatherData({required String targetCity, bool showToast = true, bool saveToHistory = false}) async {
+  Future<void> getWeatherData({required String targetCity, bool saveToHistory = false}) async {
     if (targetCity.trim().isEmpty) return;
 
-    // Only show full loading screen if we have no data yet
     if (_weather == null) setState(() => isLoading = true);
     setState(() => isFetching = true);
 
     try {
-      // 1. Fetch Data
       final weatherData = await _weatherService.fetchWeather(targetCity);
 
       if (!mounted) return;
 
-      // 2. Success! Update UI
       setState(() {
         _weather = weatherData;
-        city = targetCity; // Confirm the change of city only on success
+        city = targetCity;
 
         if (weatherData.iconCode.startsWith("02")) {
           weatherCondition = "Partly Cloudy";
@@ -170,15 +187,11 @@ class _MyAppState extends State<MyApp> {
         isLoading = false;
       });
 
-      // 3. Save Logic (Only if validated)
       if (saveToHistory) {
         await _addToRecentSearches(targetCity);
-        await _savePreferences(); // Save as new default
-      }
-
-      // 4. Show Success Toast
-      if (showToast) {
-        _showStatusToast(city: targetCity, iconCode: weatherData.iconCode, isError: false);
+        await _savePreferences();
+        await Future.delayed(const Duration(milliseconds: 500));
+        _showResultDialog("Location Updated", "Successfully set location to $targetCity.", isError: false);
       }
 
     } catch (e) {
@@ -186,97 +199,24 @@ class _MyAppState extends State<MyApp> {
 
       setState(() {
         isLoading = false;
-        // Don't update 'city' variable to the broken one. Keep the old valid one if possible.
-        // But if we have no weather at all yet:
         if (_weather == null) {
-           weatherCondition = e.toString().contains("City") ? "City Not Found" : "Connection Error";
+          weatherCondition = e.toString().toLowerCase().contains("not found")
+              ? "City Not Found"
+              : "Connection Error";
         }
       });
 
-      // 5. Error Handling
-      if (e.toString().contains("City not found")) {
-        // --- INVALID CITY LOGIC ---
-        // Show Dialog, Do NOT save, Do NOT show toast
-        _showErrorDialog("Invalid City", "We couldn't find \"$targetCity\". Please check your spelling.");
+      String errorMsg = e.toString().toLowerCase();
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      if (errorMsg.contains("city not found") || errorMsg.contains("404")) {
+        _showResultDialog("Invalid City", "We couldn't find \"$targetCity\". Please check your spelling.", isError: true);
       } else {
-         // Other errors (e.g. No Internet)
-         if (showToast) {
-            _showStatusToast(city: "Error", isError: true, customMessage: "Check your connection.");
-         }
+        _showResultDialog("Error", "Could not load weather. Please check your connection.", isError: true);
       }
     } finally {
       if (mounted) setState(() => isFetching = false);
     }
-  }
-
-  // --- TOAST LOGIC ---
-  void _showStatusToast({required String city, String? iconCode, bool isError = false, String? customMessage}) {
-    String message = "";
-    Color bgColor;
-    IconData icon;
-
-    if (isError) {
-      message = customMessage ?? "Something went wrong.";
-      bgColor = CupertinoColors.systemRed;
-      icon = CupertinoIcons.exclamationmark_circle_fill;
-    } else {
-      // SUCCESS: Use the current 'activeColor' for the toast background
-      bgColor = activeColor;
-      icon = CupertinoIcons.location_fill;
-
-      String code = (iconCode ?? "01").substring(0, 2);
-      String advice = "";
-      switch(code) {
-        case '01': advice = "It's a beautiful sunny day!"; break;
-        case '02': advice = "Enjoy the nice weather."; break;
-        case '03':
-        case '04': advice = "It's a bit cloudy today."; break;
-        case '09':
-        case '10': advice = "Don't forget your umbrella!"; break;
-        case '11': advice = "Stay safe, storm approaching."; break;
-        case '13': advice = "Wrap up warm, it's snowing!"; break;
-        case '50': advice = "Drive carefully, visibility is low."; break;
-        default: advice = "Have a great day!";
-      }
-      message = "📍 $city\n$advice";
-    }
-
-    setState(() {
-      _toastMessage = message;
-      _toastColor = bgColor;
-      _toastIcon = icon;
-      _showToast = true;
-    });
-
-    _toastTimer?.cancel();
-    _toastTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted) {
-        setState(() {
-          _showToast = false;
-        });
-      }
-    });
-  }
-
-  void _showErrorDialog(String title, String message) {
-    if (navigatorKey.currentContext == null) return;
-    showCupertinoDialog(
-      context: navigatorKey.currentContext!,
-      builder: (context) => CupertinoAlertDialog(
-        title: Text(title),
-        content: Padding(
-          padding: const EdgeInsets.only(top: 8.0),
-          child: Text(message),
-        ),
-        actions: [
-          CupertinoDialogAction(
-            isDefaultAction: true,
-            child: const Text("OK"),
-            onPressed: () => Navigator.pop(context),
-          )
-        ],
-      ),
-    );
   }
 
   // --- HELPERS ---
@@ -313,13 +253,13 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  // --- UI BUILDER ---
+  // --- UI COMPONENTS ---
 
   void _showColorPicker(BuildContext context) {
     showCupertinoModalPopup(
       context: context,
       builder: (context) => CupertinoActionSheet(
-        title: const Text('Choose App Theme'),
+        title: const Text('Choose App Theme', style: TextStyle(fontFamily: 'SFPro')),
         actions: [
           _buildColorAction(context, 'Teal', CupertinoColors.systemTeal),
           _buildColorAction(context, 'Blue', CupertinoColors.activeBlue),
@@ -328,7 +268,10 @@ class _MyAppState extends State<MyApp> {
           _buildColorAction(context, 'Red', CupertinoColors.systemRed),
           _buildColorAction(context, 'Purple', CupertinoColors.systemPurple),
         ],
-        cancelButton: CupertinoActionSheetAction(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(fontFamily: 'SFPro'))
+        ),
       ),
     );
   }
@@ -336,14 +279,11 @@ class _MyAppState extends State<MyApp> {
   CupertinoActionSheetAction _buildColorAction(BuildContext context, String name, Color color) {
     return CupertinoActionSheetAction(
       onPressed: () {
-        // Kapag nagpalit ng kulay, magse-setState ito
-        // Dahil ang activeColor variable ay nasa root ng MyAppState,
-        // magrerebuild ang buong UI kasama ang Tabs at Toast
         setState(() => activeColor = color);
         _savePreferences();
         Navigator.pop(context);
       },
-      child: Text(name, style: TextStyle(color: color)),
+      child: Text(name, style: TextStyle(color: color, fontFamily: 'SFPro')),
     );
   }
 
@@ -351,14 +291,17 @@ class _MyAppState extends State<MyApp> {
     showCupertinoModalPopup(
       context: context,
       builder: (context) => CupertinoActionSheet(
-        title: const Text('Auto Refresh Interval'),
+        title: const Text('Auto Refresh Interval', style: TextStyle(fontFamily: 'SFPro')),
         actions: [
-          CupertinoActionSheetAction(onPressed: () { Navigator.pop(context); _updateAutoRefresh(0); }, child: const Text('Off')),
-          CupertinoActionSheetAction(onPressed: () { Navigator.pop(context); _updateAutoRefresh(15); }, child: const Text('15 Minutes')),
-          CupertinoActionSheetAction(onPressed: () { Navigator.pop(context); _updateAutoRefresh(30); }, child: const Text('30 Minutes')),
-          CupertinoActionSheetAction(onPressed: () { Navigator.pop(context); _updateAutoRefresh(60); }, child: const Text('1 Hour')),
+          CupertinoActionSheetAction(onPressed: () { Navigator.pop(context); _updateAutoRefresh(0); }, child: const Text('Off', style: TextStyle(fontFamily: 'SFPro'))),
+          CupertinoActionSheetAction(onPressed: () { Navigator.pop(context); _updateAutoRefresh(15); }, child: const Text('15 Minutes', style: TextStyle(fontFamily: 'SFPro'))),
+          CupertinoActionSheetAction(onPressed: () { Navigator.pop(context); _updateAutoRefresh(30); }, child: const Text('30 Minutes', style: TextStyle(fontFamily: 'SFPro'))),
+          CupertinoActionSheetAction(onPressed: () { Navigator.pop(context); _updateAutoRefresh(60); }, child: const Text('1 Hour', style: TextStyle(fontFamily: 'SFPro'))),
         ],
-        cancelButton: CupertinoActionSheetAction(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(fontFamily: 'SFPro'))
+        ),
       ),
     );
   }
@@ -370,9 +313,9 @@ class _MyAppState extends State<MyApp> {
         children: [
           Icon(icon, color: Colors.white, size: 24),
           const SizedBox(height: 8),
-          Text(title, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+          Text(title, style: const TextStyle(fontSize: 12, color: Colors.white70, fontFamily: 'SFPro')),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
+          Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white, fontFamily: 'SFPro')),
         ],
       ),
     );
@@ -384,10 +327,16 @@ class _MyAppState extends State<MyApp> {
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       title: "Climora",
-      // Dito ina-apply ang activeColor sa buong theme
+      // --- UPDATED THEME: Applying SFPro globally ---
       theme: CupertinoThemeData(
-        brightness: isDarkMode ? Brightness.dark : Brightness.light,
-        primaryColor: activeColor
+          brightness: isDarkMode ? Brightness.dark : Brightness.light,
+          primaryColor: activeColor,
+          textTheme: CupertinoTextThemeData(
+            textStyle: TextStyle(
+              fontFamily: 'SFPro', // Here is the magic
+              color: isDarkMode ? CupertinoColors.white : CupertinoColors.black,
+            ),
+          )
       ),
       home: AnimatedSwitcher(
         duration: const Duration(milliseconds: 800),
@@ -415,7 +364,15 @@ class _MyAppState extends State<MyApp> {
             children: [
               const Icon(CupertinoIcons.cloud_sun_fill, size: 100, color: CupertinoColors.white),
               const SizedBox(height: 20),
-              const Text("Climora", style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: CupertinoColors.white, letterSpacing: 1.5, fontFamily: 'System', decoration: TextDecoration.none)),
+              // --- UPDATED FONT HERE ---
+              const Text("Climora", style: TextStyle(
+                  fontSize: 40,
+                  fontWeight: FontWeight.bold,
+                  color: CupertinoColors.white,
+                  letterSpacing: 1.5,
+                  fontFamily: 'SFPro', // Changed from 'System' to 'SFPro'
+                  decoration: TextDecoration.none
+              )),
               const SizedBox(height: 60),
               const CupertinoActivityIndicator(radius: 15, color: CupertinoColors.white),
             ],
@@ -429,7 +386,6 @@ class _MyAppState extends State<MyApp> {
     return CupertinoTabScaffold(
       key: const ValueKey("MainApp"),
       tabBar: CupertinoTabBar(
-        // IMPORTANT: Ginagamit nito ang activeColor variable para mag-change kulay din ang tabs
         activeColor: activeColor,
         backgroundColor: isDarkMode ? const Color(0xFF1C1C1E) : const Color(0xFFF9F9F9),
         items: const [
@@ -444,7 +400,6 @@ class _MyAppState extends State<MyApp> {
             backgroundColor: Colors.transparent,
             child: Stack(
               children: [
-                // 1. Background Image
                 Container(
                   width: double.infinity,
                   height: double.infinity,
@@ -455,7 +410,6 @@ class _MyAppState extends State<MyApp> {
                     ),
                   ),
                 ),
-                // 2. Dark Overlay
                 Container(
                   width: double.infinity,
                   height: double.infinity,
@@ -467,12 +421,11 @@ class _MyAppState extends State<MyApp> {
                     ),
                   ),
                 ),
-                // 3. Scrollable Content
                 SafeArea(
                   child: CustomScrollView(
                     slivers: [
                       CupertinoSliverRefreshControl(
-                        onRefresh: () async { await getWeatherData(targetCity: city, showToast: true); },
+                        onRefresh: () async { await getWeatherData(targetCity: city); },
                         builder: (context, refreshState, pulledExtent, refreshTriggerPullDistance, refreshIndicatorExtent) {
                           return const Center(child: CupertinoActivityIndicator(color: Colors.white));
                         },
@@ -482,20 +435,47 @@ class _MyAppState extends State<MyApp> {
                         child: Column(
                           children: [
                             const SizedBox(height: 20),
-                            Text(city, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 32, color: Colors.white, shadows: [Shadow(blurRadius: 10, color: Colors.black45, offset: Offset(2, 2))])),
+                            Text(
+                                city,
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 32,
+                                    color: activeColor,
+                                    fontFamily: 'SFPro',
+                                    shadows: const [Shadow(blurRadius: 10, color: Colors.black45, offset: Offset(2, 2))]
+                                )
+                            ),
                             const SizedBox(height: 5),
-                            Text(weatherCondition, style: const TextStyle(fontWeight: FontWeight.w300, fontSize: 20, color: Colors.white70)),
+                            Text(
+                                weatherCondition,
+                                style: const TextStyle(fontWeight: FontWeight.w300, fontSize: 20, color: Colors.white70, fontFamily: 'SFPro')
+                            ),
                             const SizedBox(height: 8),
-                            Text(isFetching ? "Fetching..." : "Updated $lastFetchTime", style: const TextStyle(fontSize: 12, color: Colors.white54)),
+                            Text(isFetching ? "Fetching..." : "Updated $lastFetchTime", style: const TextStyle(fontSize: 12, color: Colors.white54, fontFamily: 'SFPro')),
 
                             const SizedBox(height: 30),
                             SizedBox(
                               width: 150, height: 150,
                               child: _weather == null
-                                ? const Icon(CupertinoIcons.cloud, size: 100, color: Colors.white)
-                                : Icon(_getWeatherIcon(_weather!.iconCode), size: 110, color: Colors.white),
+                                  ? Icon(CupertinoIcons.cloud, size: 100, color: activeColor)
+                                  : Icon(
+                                  _getWeatherIcon(_weather!.iconCode),
+                                  size: 110,
+                                  color: activeColor
+                              ),
                             ),
-                            Text(_weather == null ? "--" : "${_weather!.getTempString(isCelsius)}°", style: const TextStyle(fontSize: 90, fontWeight: FontWeight.w200, color: Colors.white, letterSpacing: -5)),
+
+                            Text(
+                                _weather == null ? "--" : "${_weather!.getTempString(isCelsius)}°",
+                                style: TextStyle(
+                                    fontSize: 90,
+                                    fontWeight: FontWeight.w200,
+                                    color: activeColor,
+                                    letterSpacing: -5,
+                                    fontFamily: 'SFPro'
+                                )
+                            ),
+
                             const Spacer(),
                             Container(
                               margin: const EdgeInsets.all(20),
@@ -536,46 +516,6 @@ class _MyAppState extends State<MyApp> {
                     ],
                   ),
                 ),
-
-                // --- TOAST WIDGET ---
-                AnimatedPositioned(
-                  duration: const Duration(milliseconds: 500),
-                  curve: Curves.easeOutBack,
-                  top: _showToast ? 60 : -150,
-                  left: 20,
-                  right: 20,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-                        decoration: BoxDecoration(
-                          // Ensure toast uses the current active theme color (or red for error)
-                          color: _toastColor.withOpacity(0.85),
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 5))
-                          ],
-                          border: Border.all(color: Colors.white.withOpacity(0.2)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(_toastIcon, color: Colors.white, size: 28),
-                            const SizedBox(width: 15),
-                            Expanded(
-                              child: Text(
-                                _toastMessage,
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
               ],
             ),
           );
@@ -611,11 +551,14 @@ class _MyAppState extends State<MyApp> {
                         title: const Text('City'),
                         trailing: Row(mainAxisSize: MainAxisSize.min, children: [Text(city, style: const TextStyle(color: CupertinoColors.systemGrey)), const SizedBox(width: 5), const Icon(CupertinoIcons.chevron_right, color: CupertinoColors.systemGrey3)]),
                         onTap: () {
-                          Navigator.of(context).push(CupertinoPageRoute(builder: (context) => CitySearchPage(recentSearches: recentSearches, popularCities: popularCities, onCitySelected: (selectedCity) async {
-                            // Try to fetch new city data.
-                            // saveToHistory: true makes sure we only add it if valid.
-                            await getWeatherData(targetCity: selectedCity, showToast: true, saveToHistory: true);
-                          })));
+                          Navigator.of(context).push(CupertinoPageRoute(builder: (context) => CitySearchPage(
+                              recentSearches: recentSearches,
+                              popularCities: popularCities,
+                              onCitySelected: (selectedCity) async {
+                                // Pass true to trigger the success dialog
+                                await getWeatherData(targetCity: selectedCity, saveToHistory: true);
+                              }
+                          )));
                         },
                       ),
                     ],

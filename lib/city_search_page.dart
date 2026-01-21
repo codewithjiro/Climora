@@ -36,6 +36,17 @@ class _CitySearchPageState extends State<CitySearchPage> {
     super.dispose();
   }
 
+  void _submitCity(String city) {
+    if (city.trim().isNotEmpty) {
+      // 1. Close the search page first
+      Navigator.pop(context);
+
+      // 2. Trigger the fetch logic in main.dart
+      // Note: main.dart now handles the waiting/dialog logic
+      widget.onCitySelected(city.trim());
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return CupertinoPageScaffold(
@@ -50,23 +61,16 @@ class _CitySearchPageState extends State<CitySearchPage> {
               child: CupertinoSearchTextField(
                 controller: _textController,
                 placeholder: "Search or enter city...",
-                onSubmitted: (value) {
-                  if (value.trim().isNotEmpty) {
-                    widget.onCitySelected(value.trim());
-                    Navigator.pop(context);
-                  }
-                },
+                onSubmitted: _submitCity,
               ),
             ),
             Expanded(
               child: ListView(
                 children: [
+                  // Option to add the custom typed city
                   if (_searchText.isNotEmpty)
                     GestureDetector(
-                      onTap: () {
-                        widget.onCitySelected(_searchText);
-                        Navigator.pop(context);
-                      },
+                      onTap: () => _submitCity(_searchText),
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                         decoration: const BoxDecoration(
@@ -87,6 +91,7 @@ class _CitySearchPageState extends State<CitySearchPage> {
                       ),
                     ),
 
+                  // Recent Searches Section
                   if (widget.recentSearches.isNotEmpty && _searchText.isEmpty) ...[
                     const Padding(
                       padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -98,6 +103,7 @@ class _CitySearchPageState extends State<CitySearchPage> {
                       _buildCityTile(city, isRecent: true),
                   ],
 
+                  // Popular Cities / Search Results Section
                   if (_searchText.isEmpty || widget.popularCities.any((c) => c.toLowerCase().contains(_searchText.toLowerCase())))
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
@@ -121,10 +127,7 @@ class _CitySearchPageState extends State<CitySearchPage> {
 
   Widget _buildCityTile(String city, {bool isRecent = false}) {
     return GestureDetector(
-      onTap: () {
-        widget.onCitySelected(city);
-        Navigator.pop(context);
-      },
+      onTap: () => _submitCity(city),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: const BoxDecoration(
